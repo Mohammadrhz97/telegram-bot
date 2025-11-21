@@ -1,10 +1,12 @@
 // src/bot/adminPanel.js
-// Admin Panel (Orders + Reports)
+// Admin Panel (Orders + Reports with pagination)
 
 import { prisma } from "../db.js";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import moment from "moment-jalaali";
+moment.loadPersian({ dialect: "persian-modern", usePersianDigits: false });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -79,6 +81,30 @@ function isAdmin(ctx) {
   return ctx.from && ctx.from.id.toString() === ADMIN_ID;
 }
 
+// compute time range + label for reports
+function getReportRange(range) {
+  const now = new Date();
+  let start, end, label;
+
+  if (range === "daily") {
+    label = "📅 گزارش امروز";
+    start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  } else if (range === "weekly") {
+    label = "📆 گزارش هفتگی";
+    const day = now.getDay();
+    const diff = (day + 6) % 7; // start: Monday-ish
+    start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diff);
+    end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 7);
+  } else {
+    label = "🗓 گزارش ماهانه";
+    start = new Date(now.getFullYear(), now.getMonth(), 1);
+    end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  }
+
+  return { label, start, end };
+}
+
 // =========================
 // Register all admin handlers
 // =========================
@@ -142,16 +168,37 @@ export function registerAdminPanel(bot) {
         return;
       }
 
-      // orders filtered
+      // orders filtered (no pagination, full UI)
       if (data === "orders_paid") return sendOrdersByGroup(ctx, "paid");
       if (data === "orders_pending") return sendOrdersByGroup(ctx, "pending");
       if (data === "orders_cancelled")
         return sendOrdersByGroup(ctx, "cancelled");
 
-      // reports
+      // reports — main buttons
       if (data === "report_daily") return sendReport(ctx, "daily");
       if (data === "report_weekly") return sendReport(ctx, "weekly");
       if (data === "report_monthly") return sendReport(ctx, "monthly");
+
+      // reports — pagination
+      if (data.startsWith("report_page_")) {
+        // pattern: report_page_<range>_<page>
+        const parts = data.split("_");
+        const range = parts[2];
+        const page = parseInt(parts[3] || "0", 10) || 0;
+        await sendReportPage(ctx, range, page, true);
+        return;
+      }
+
+      // reports — single order detail
+      if (data.startsWith("report_detail_")) {
+        const orderId = parseInt(data.replace("report_detail_", ""), 10);
+        if (!isNaN(orderId)) {
+          await sendReportOrderDetail(ctx, orderId);
+        } else {
+          await ctx.answerCbQuery("❌ شناسه سفارش نامعتبر است.");
+        }
+        return;
+      }
 
       return next();
     } catch (err) {
@@ -162,7 +209,7 @@ export function registerAdminPanel(bot) {
 }
 
 // =======================
-//  Orders grouped with BEAUTIFUL UI
+//  Orders grouped with BEAUTIFUL UI (admin_orders)
 // =======================
 async function sendOrdersByGroup(ctx, group) {
   let title = "";
@@ -219,7 +266,7 @@ async function sendOrdersByGroup(ctx, group) {
       `• آدرس:\n  ${addr}\n\n` +
       `📦 *اقلام سفارش*\n`;
 
-    // 🔥 FULL PRODUCT DETAILS
+    // FULL PRODUCT DETAILS
     for (const item of o.items || []) {
       const p = item.product || {};
 
@@ -247,8 +294,13 @@ async function sendOrdersByGroup(ctx, group) {
 }
 
 // =========================
-// Generate + send CSV reports
+// Generate + send sales reports (Daily / Weekly / Monthly)
 // =========================
+// =========================
+// Generate + send XLSX reports
+// =========================
+import ExcelJS from "exceljs";
+
 async function sendReport(ctx, range) {
   const now = new Date();
   let start;
@@ -281,42 +333,232 @@ async function sendReport(ctx, range) {
       createdAt: { gte: start, lt: end },
       status: { in: paidStatuses },
     },
-    include: { user: true },
+    include: {
+      user: true,
+      items: { include: { product: true } },
+    },
     orderBy: { createdAt: "asc" },
   });
 
   const totalRevenue = orders.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
 
+  // Summary
   await ctx.reply(
-    `${label}\n\n📊 تعداد: ${
+    `${label}\n\n📊 تعداد سفارش‌ها: ${
       orders.length
     }\n💰 مجموع فروش: ${totalRevenue.toLocaleString()} تومان`
   );
 
   if (!orders.length)
-    return ctx.reply("هیچ سفارشی برای ساخت فایل گزارش وجود ندارد.");
+    return ctx.reply("هیچ سفارشی برای ساخت گزارش وجود ندارد.");
 
-  const fileName = `${range}-report-${now.toISOString().slice(0, 10)}.csv`;
+  // =============================
+  // Show orders in Telegram
+  // =============================
+  for (const o of orders) {
+    let text =
+      `🆔 *ID سفارش:* ${o.id}\n` +
+      `👤 *نام مشتری:* ${o.user?.fullName || "-"}\n` +
+      `🪪 *آیدی تلگرام:* ${o.user?.telegramId || "-"}\n` +
+      `💵 *قیمت کل:* ${o.totalPrice.toLocaleString()} تومان\n` +
+      `📅 *تاریخ:* ${new Date(o.createdAt).toLocaleString("fa-IR")}\n` +
+      `📦 *جزییات محصولات:*\n`;
+
+    for (const item of o.items) {
+      const p = item.product;
+      text += `• (${p.id}) ${p.model} - ${p.color || "-"} × ${item.qty}\n`;
+    }
+
+    text += `\n━━━━━━━━━━━━━━`;
+
+    await ctx.replyWithMarkdown(text);
+  }
+
+  // =============================
+  // Build XLSX file
+  // =============================
+
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Orders Report");
+
+  // Columns
+  sheet.columns = [
+    { header: "Order ID", key: "order_id", width: 10 },
+    { header: "Telegram ID", key: "telegram_id", width: 15 },
+    { header: "Full Name", key: "full_name", width: 20 },
+    { header: "Phone", key: "phone", width: 15 },
+    { header: "Total Price", key: "total_price", width: 15 },
+    { header: "Status", key: "status", width: 12 },
+    { header: "Created At", key: "created_at", width: 22 },
+    { header: "Items", key: "items", width: 50 },
+  ];
+
+  // Add rows
+  for (const o of orders) {
+    const itemsText = o.items
+      .map(
+        (i) =>
+          `(${i.product.id}) ${i.product.model} - ${i.product.color} x${i.qty}`
+      )
+      .join(" | ");
+
+    sheet.addRow({
+      order_id: o.id,
+      telegram_id: o.user?.telegramId || "",
+      full_name: o.user?.fullName || "",
+      phone: o.phone || o.user?.phone || "",
+      total_price: o.totalPrice,
+      status: o.status,
+      created_at: moment(o.createdAt).format("jYYYY/jMM/jDD HH:mm"),
+      items: itemsText,
+    });
+  }
+
+  // File path
+  const persianDate = moment().format("jYYYY-jMM-jDD");
+  const fileName = `${range}-report-${persianDate}.xlsx`;
   const filePath = path.join(reportsDir, fileName);
 
-  const header =
-    "order_id,user_telegram_id,full_name,phone,total_price,status,created_at\n";
-
-  const lines = orders.map((o) => {
-    const fullName = (o.user?.fullName || "").replace(/,/g, " ");
-    const phone = (o.phone || o.user?.phone || "").replace(/,/g, " ");
-    return [
-      o.id,
-      `"${o.user?.telegramId || ""}"`,
-      `"${fullName}"`,
-      `"${phone}"`,
-      o.totalPrice,
-      o.status,
-      o.createdAt.toISOString(),
-    ].join(",");
-  });
-
-  fs.writeFileSync(filePath, header + lines.join("\n"), "utf8");
+  // Save file
+  await workbook.xlsx.writeFile(filePath);
 
   await ctx.replyWithDocument({ source: filePath, filename: fileName });
+}
+
+// =========================
+// Paginated report view
+// =========================
+async function sendReportPage(ctx, range, page) {
+  const { label, start, end } = getReportRange(range);
+  const paidStatuses = ["paid", "confirmed", "shipped", "delivered"];
+
+  const orders = await prisma.order.findMany({
+    where: {
+      createdAt: { gte: start, lt: end },
+      status: { in: paidStatuses },
+    },
+    include: {
+      user: true,
+      items: { include: { product: true } },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  if (!orders.length) return;
+
+  const pageSize = 10;
+  const totalPages = Math.ceil(orders.length / pageSize);
+  const currentPage = Math.max(0, Math.min(page, totalPages - 1));
+
+  const startIndex = currentPage * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, orders.length);
+
+  let text = `📄 ${label}\nصفحه ${currentPage + 1} از ${totalPages}\n\n`;
+
+  for (let i = startIndex; i < endIndex; i++) {
+    const o = orders[i];
+    const fullName = o.user?.fullName || "-";
+    const telegramId = o.user?.telegramId || "-";
+    const dateStr = new Date(o.createdAt).toLocaleDateString("fa-IR");
+
+    text +=
+      `🆔 سفارش: #${o.id}\n` +
+      `👤 مشتری: ${fullName}\n` +
+      `🪪 آیدی تلگرام: ${telegramId}\n` +
+      `💵 مبلغ: ${o.totalPrice.toLocaleString()} تومان\n` +
+      `📅 تاریخ: ${dateStr}\n` +
+      `📦 محصولات:\n`;
+
+    for (const item of o.items || []) {
+      const p = item.product || {};
+      text += `• #${p.id} | ${p.model} | ${p.material} | ${p.color} × ${item.qty}\n`;
+    }
+
+    text += `━━━━━━━━━━━━━━\n`;
+  }
+
+  const keyboard = [];
+
+  const row = [];
+  if (currentPage > 0)
+    row.push({
+      text: "◀ قبلی",
+      callback_data: `report_page_${range}_${currentPage - 1}`,
+    });
+
+  row.push({
+    text: `صفحه ${currentPage + 1} از ${totalPages}`,
+    callback_data: "noop",
+  });
+
+  if (currentPage < totalPages - 1)
+    row.push({
+      text: "بعدی ▶",
+      callback_data: `report_page_${range}_${currentPage + 1}`,
+    });
+
+  keyboard.push(row);
+
+  keyboard.push([
+    { text: "⬅ بازگشت به گزارش‌ها", callback_data: "admin_reports" },
+  ]);
+
+  await ctx.reply(text, {
+    reply_markup: { inline_keyboard: keyboard },
+  });
+}
+
+// show full detailed order (from report_detail_x)
+async function sendReportOrderDetail(ctx, orderId) {
+  const o = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: {
+      user: true,
+      items: { include: { product: true } },
+    },
+  });
+
+  if (!o) {
+    await ctx.answerCbQuery("❌ سفارش پیدا نشد.");
+    return;
+  }
+
+  const fullName = o.user?.fullName || "-";
+  const telegramId = o.user?.telegramId || "-";
+  const phone = o.phone || o.user?.phone || "-";
+  const city = o.city || "-";
+  const addr = o.address || "-";
+
+  let text =
+    `🧾 *جزئیات کامل سفارش #${o.id}*\n` +
+    `━━━━━━━━━━━━━━━━━━\n\n` +
+    `👤 *مشخصات مشتری*\n` +
+    `• نام: ${fullName}\n` +
+    `• آیدی تلگرام: ${telegramId}\n` +
+    `• شماره تماس: ${phone}\n` +
+    `• شهر: ${city}\n` +
+    `• آدرس:\n  ${addr}\n\n` +
+    `📦 *اقلام سفارش*\n`;
+
+  for (const item of o.items || []) {
+    const p = item.product || {};
+    text +=
+      `\n━━━━━━━━━━━━━━\n` +
+      `🆔 *محصول #${p.id || "-"}*\n` +
+      `📱 *مدل:* ${p.model || "-"}\n` +
+      `🏷 *برند:* ${p.brand || "-"}\n` +
+      `🧱 *جنس:* ${p.material || "-"}\n` +
+      `🎨 *رنگ:* ${p.color || "-"}\n` +
+      `🔢 *تعداد:* ${item.qty}\n` +
+      `🔢 *قیمت:* ${item.price.toLocaleString()} تومان\n`;
+  }
+
+  text +=
+    `\n💳 *مبلغ نهایی:* ${o.totalPrice.toLocaleString()} تومان\n` +
+    `📌 *وضعیت:* ${statusLabel(o.status)}\n` +
+    `📅 *تاریخ:* ${new Date(o.createdAt).toLocaleString("fa-IR")}\n` +
+    `━━━━━━━━━━━━━━━━━━`;
+
+  await ctx.replyWithMarkdown(text);
+  await ctx.answerCbQuery();
 }
