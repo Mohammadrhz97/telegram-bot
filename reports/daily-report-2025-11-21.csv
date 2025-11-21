@@ -1,0 +1,3 @@
+order_id,user_telegram_id,full_name,phone,total_price,status,created_at
+13,"9002","مریم احمدی","09120000002",1450000,confirmed,2025-11-21T18:41:20.275Z
+14,"9003","حسین فرهادی","09120000003",1280000,shipped,2025-11-21T18:41:22.637Z
