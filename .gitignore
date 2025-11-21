@@ -1,0 +1,54 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Prisma
+prisma/dev.db
+prisma/dev.db-journal
+prisma/*.sqlite
+prisma/*.db
+prisma/*.db-journal
+
+# Build output
+dist/
+build/
+
+# VSCode
+.vscode/
+
+# Logs
+*.log
+logs/
+debug.log
+
+# Temporary files
+temp*
+tmp/
+*.tmp
+
+# OS garbage
+.DS_Store
+Thumbs.db
+
+# Model files (SUPER IMPORTANT)
+models/
+models/**
+
+# Old bot
+old-bot/
+
+# Backup files
+*.old
+*.bak
+*.backup
+
+# Cache
+.cache/
