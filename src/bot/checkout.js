@@ -20,13 +20,12 @@ export function registerCheckoutHandlers(bot) {
       return ctx.reply("🛒 سبد خریدت خالیه!");
     }
 
-    // start step-by-step collection
     userCheckoutState.set(telegramId, { step: "city", tempData: {} });
     await ctx.reply("🏙️ لطفاً نام شهر خود را بنویسید:");
   });
 
   // ----------------------------
-  // Step 2️⃣ : Collect info (city → address → phone)
+  // Step 2️⃣ : Collect info
   // ----------------------------
   bot.on("text", async (ctx, next) => {
     const telegramId = ctx.from.id.toString();
@@ -50,7 +49,6 @@ export function registerCheckoutHandlers(bot) {
         state.tempData.phone = ctx.message.text;
         await ctx.reply("⏳ در حال ثبت سفارش...");
 
-        // create order in DB
         const order = await createOrder(
           telegramId,
           state.tempData,
@@ -65,24 +63,21 @@ export function registerCheckoutHandlers(bot) {
         );
 
         await ctx.reply(
-          `✅ سفارش با موفقیت ثبت شد!\n\n📦 شماره سفارش: ${
+          `✅ سفارش ثبت شد!\n\n📦 شماره سفارش: ${
             order.id
           }\n💰 مبلغ کل: ${order.totalPrice.toLocaleString()} تومان`
         );
 
-        // move to payment upload step
         userCheckoutState.set(telegramId, {
           step: "payment",
           orderId: order.id,
         });
 
-        await ctx.reply(
-          "💳 لطفاً تصویر فیش پرداخت خود را ارسال کنید (عکس بفرستید):"
-        );
+        await ctx.reply("💳 لطفاً تصویر فیش پرداخت خود را ارسال کنید:");
       }
     } catch (err) {
       console.error("Checkout error:", err);
-      await ctx.reply("❌ خطایی هنگام ثبت سفارش پیش آمد.");
+      await ctx.reply("❌ خطا هنگام ثبت سفارش.");
       userCheckoutState.delete(telegramId);
     }
   });
@@ -90,40 +85,36 @@ export function registerCheckoutHandlers(bot) {
   // ----------------------------
   // Step 3️⃣ : Receive payment photo
   // ----------------------------
-  bot.on("photo", async (ctx) => {
+  bot.on("photo", async (ctx, next) => {
     const telegramId = ctx.from.id.toString();
     const state = userCheckoutState.get(telegramId);
-
-    if (!state || state.step !== "payment") return;
+    if (!state || state.step !== "payment") return next();
 
     try {
       const orderId = state.orderId;
       const fileId = ctx.message.photo.pop().file_id;
-
-      // get file link
       const fileUrl = await ctx.telegram.getFileLink(fileId);
 
-      // update order in DB
       await prisma.order.update({
         where: { id: orderId },
-        data: { paymentUrl: fileUrl.href, status: "pending" },
+        data: {
+          paymentUrl: fileUrl.href,
+          status: "paid",
+        },
       });
 
       userCheckoutState.delete(telegramId);
 
-      await ctx.reply(
-        "✅ فیش پرداخت با موفقیت ثبت شد و سفارش در انتظار تأیید است."
-      );
+      await ctx.reply("✅ فیش پرداخت ثبت شد و در انتظار بررسی ادمین است.");
 
-      // send to admin
       if (process.env.TELEGRAM_ADMIN_ID) {
         await ctx.telegram.sendPhoto(process.env.TELEGRAM_ADMIN_ID, fileId, {
-          caption: `🧾 فیش پرداخت سفارش #${orderId}\n\n👤 ${ctx.from.first_name}\n💰 در انتظار بررسی ادمین.`,
+          caption: `🧾 فیش پرداخت سفارش #${orderId}\n👤 ${ctx.from.first_name}`,
           reply_markup: {
             inline_keyboard: [
               [
                 {
-                  text: "✅ تایید پرداخت",
+                  text: "✅ تأیید پرداخت",
                   callback_data: `confirm_${orderId}`,
                 },
                 { text: "❌ رد پرداخت", callback_data: `reject_${orderId}` },

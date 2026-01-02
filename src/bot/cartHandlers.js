@@ -52,6 +52,17 @@ export function registerCartHandlers(bot) {
     try {
       const data = ctx.callbackQuery.data || "";
       const telegramId = ctx.from.id.toString();
+      const isCartAction =
+        data.startsWith("addcart_") ||
+        data.startsWith("cartinc_") ||
+        data.startsWith("cartdec_") ||
+        data.startsWith("cartdel_") ||
+        data === "cartclear" ||
+        data === "noop";
+
+      if (!isCartAction) {
+        return next();
+      }
 
       if (data.startsWith("addcart_")) {
         const productId = parseInt(data.split("_")[1], 10);

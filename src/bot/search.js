@@ -38,12 +38,64 @@ function resolveInputPhoto(imageUrl) {
 // -----------------------------------------
 function buildCaption(p) {
   return (
-    `📱 مدل: ${p.model}\n` +
+    `📱 مدل: ${p.modelFull}\n` +
     `🏷 برند: ${p.brand || "-"}\n` +
     `🧱 جنس: ${p.material || "-"}\n` +
     `🎨 رنگ: ${p.color || "-"}\n` +
     `💰 قیمت: ${p.price.toLocaleString()} تومان`
   );
+}
+
+// -----------------------------------------
+// Helper: build standardized short code
+// app-13pm / sam-s24u / sam-a54 / ...
+// -----------------------------------------
+function buildStandardModelShort(modelRaw, text) {
+  const raw = (modelRaw || "").toLowerCase();
+
+  // اگر خودش قبلاً استاندارد بوده، همونو برگردون
+  if (raw.startsWith("app-") || raw.startsWith("sam-")) {
+    return raw;
+  }
+
+  const apple = normalizeAppleModel(modelRaw, text);
+  const samsung = normalizeSamsungModel(modelRaw, text);
+
+  // اگر هر دو match شدن، براساس وجود کلمه‌ی آیفون/سامسونگ تصمیم بگیر
+  const fullText = (String(modelRaw) + " " + String(text)).toLowerCase();
+  let best = null;
+  let prefix = null;
+
+  if (apple && !samsung) {
+    best = apple;
+    prefix = "app";
+  } else if (!apple && samsung) {
+    best = samsung;
+    prefix = "sam";
+  } else if (apple && samsung) {
+    if (fullText.includes("iphone") || fullText.includes("ایفون")) {
+      best = apple;
+      prefix = "app";
+    } else if (fullText.includes("سامسونگ") || fullText.includes("samsung")) {
+      best = samsung;
+      prefix = "sam";
+    } else {
+      // پیش‌فرض: اپل
+      best = apple;
+      prefix = "app";
+    }
+  }
+
+  if (best && prefix) {
+    return `${prefix}-${String(best.shortcode || "").toLowerCase()}`;
+  }
+
+  // اگر نشد تشخیص بدیم ولی خود modelRaw یه چیز فشرده بود، می‌تونیم از همون استفاده کنیم
+  if (raw && raw !== "-") {
+    return raw;
+  }
+
+  return "";
 }
 
 // =====================================================
@@ -56,13 +108,12 @@ export function registerSearchHandlers(bot) {
     setState(userId, "search", "await_query");
 
     await ctx.reply(
-      "سلام رفیق! 👋\n" +
-        "هرچی دنبالشی فقط بهم بگو — چه با متن چه با عکس! 🔍📸\n\n" +
-        "مثلاً می‌تونی بگی:\n" +
-        "• قاب آیفون ۱۳ مشکی سیلیکونی\n" +
-        "• قاب سامسونگ S24 اولترا\n" +
-        "• یه قاب فانتزی صورتی برای آیفون ۱۲\n\n" +
-        "یا حتی یه عکس بفرست تا مشابهش رو برات پیدا کنم 🙂🤝"
+      "سلام عزیزم! 👋\n" +
+        "این ربات با هوش مصنوعی کمکت می‌کنه سریع‌ترین قاب مناسب گوشیت رو پیدا کنی.\n\n" +
+        "✅ فقط کافیه مدل گوشی‌ت رو بگی و سلیقه‌ات رو توصیف کنی، مثلاً:\n" +
+        "• «قاب محکم مردونه برای آیفون ۱۳ پرومکس مشکی»\n" +
+        "• «یه قاب دخترونه گل‌گلی برای سامسونگ A54»\n\n" +
+        "می‌تونی حتی عکس یه قاب رو بفرستی تا مشابهش رو برات پیدا کنم 🔍📸"
     );
   });
 
@@ -79,7 +130,7 @@ export function registerSearchHandlers(bot) {
     const tmp = getTemp(userId) || {};
     const ai = await parseText(text);
 
-    // Friendly AI message
+    // Friendly AI message (کوتاه)
     if (ai.say) {
       try {
         await ctx.reply(ai.say);
@@ -87,26 +138,31 @@ export function registerSearchHandlers(bot) {
     }
 
     // Extract AI filters
-    let modelCode = ai.payload.model || "-";
+    let modelRaw = ai.payload.model || "-";
     let modelFull = ai.payload.modelFull || "-";
     const material = ai.payload.material !== "-" ? ai.payload.material : null;
     const color = ai.payload.color !== "-" ? ai.payload.color : null;
     const brand = ai.payload.brand !== "-" ? ai.payload.brand : null;
 
     // -----------------------------------
-    // Case: set_model
+    // Case: set_model  → فقط مدل کاربر رو ذخیره کن
     // -----------------------------------
     if (ai.action === "set_model") {
-      const apple = normalizeAppleModel(modelCode, text);
-      const samsung = normalizeSamsungModel(modelCode, text);
-      const best = apple || samsung;
+      const modelShort = buildStandardModelShort(modelRaw, text);
 
-      if (best) {
-        modelCode = (best.shortcode || modelCode).toLowerCase();
-        modelFull = best.fullname || modelFull;
+      if (!modelShort) {
+        await ctx.reply(
+          "📱 نتونستم مدل گوشیت رو دقیق بفهمم، یک بار دیگه واضح‌تر بگو."
+        );
+        return;
       }
 
-      setTemp(userId, { lastModel: modelCode, lastModelFull: modelFull });
+      setTemp(userId, {
+        lastModel: modelShort,
+        lastModelFull: modelFull,
+      });
+
+      await ctx.reply(`✅ مدل گوشیت ثبت شد: ${modelFull || modelShort}`);
       return;
     }
 
@@ -114,40 +170,28 @@ export function registerSearchHandlers(bot) {
     // Case: search_products
     // -----------------------------------
     if (ai.action === "search_products") {
-      let model =
-        modelCode !== "-" ? modelCode : tmp.lastModel?.toLowerCase() || "";
-
-      // If user mentioned new model → normalize
-      if (modelCode !== "-") {
-        const apple = normalizeAppleModel(modelCode, text);
-        const samsung = normalizeSamsungModel(modelCode, text);
-        const best = apple || samsung;
-
-        if (best) {
-          model = String(best.shortcode).toLowerCase();
-          modelFull = best.fullname;
-        }
+      // مرحله ۱: مدل را مشخص کن (الزامی)
+      let modelShort = "";
+      if (modelRaw && modelRaw !== "-") {
+        modelShort = buildStandardModelShort(modelRaw, text);
+      } else if (tmp.lastModel) {
+        modelShort = tmp.lastModel.toLowerCase();
       }
 
-      // User still never told model
-      if (!model) {
-        await ctx.reply("📱 لطفاً مدل گوشی‌ت رو هم بگو تا جستجو کنم.");
+      if (!modelShort) {
+        await ctx.reply("📱 اول مدل گوشی‌ت رو بگو، بعد می‌گردم بین قاب‌ها.");
         return;
       }
 
-      // Save fallback model
+      // ذخیره‌ی مدل برای پیام‌های بعدی
       setTemp(userId, {
-        lastModel: model,
+        lastModel: modelShort,
         lastModelFull: modelFull || tmp.lastModelFull,
       });
 
-      // -----------------------------------
-      // Smart flexible filtering
-      // (model = contains, not exact)
-      // -----------------------------------
-
+      // فیلترهای Prisma
       const where = {
-        model: { contains: model, mode: "insensitive" }, // ← مهم‌ترین فیکس
+        model: { contains: modelShort, mode: "insensitive" },
       };
 
       if (material)
@@ -165,14 +209,19 @@ export function registerSearchHandlers(bot) {
         });
 
         if (!products.length) {
-          await ctx.reply("❌ محصولی با این مشخصات پیدا نشد.");
+          await ctx.reply(
+            "❌ محصولی با این مشخصات پیدا نشد. می‌تونی جنس یا رنگ دیگه‌ای رو هم امتحان کنی."
+          );
           return;
         }
 
-        // send cards
+        await ctx.reply(
+          "✅ این چندتا قاب نزدیک‌ترین گزینه‌ها به سلیقه‌ی تو هستن:"
+        );
+
         for (const p of products) {
           const caption = buildCaption(p);
-          const photo = resolveInputPhoto(p.imageUrl);
+          const photo = resolveInputPhoto(p.imageUrl || p.telegramFileId);
 
           const reply_markup = {
             inline_keyboard: [
@@ -194,6 +243,9 @@ export function registerSearchHandlers(bot) {
         }
       } catch (err) {
         console.log("SEARCH_ERR:", err);
+        await ctx.reply(
+          "❌ در جستجو خطایی رخ داد، چند لحظه بعد دوباره امتحان کن."
+        );
       }
 
       return;

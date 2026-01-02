@@ -11,7 +11,7 @@ const COLORS = [
   "سبز",
   "بنفش",
   "صورتی",
-  "सरمه‌ای",
+  "سرمه‌ای",
 ];
 
 function safeDefault() {
@@ -31,27 +31,51 @@ function safeDefault() {
 function buildPrompt(userText, history = []) {
   const system = `
 You are an AI JSON API for a Telegram phone-case shop bot.
-User writes in Persian/Finglish.
-Extract structured filters ONLY.
+User writes in Persian / Finglish.
+
+Your job:
+- Understand what phone model and what type of case the user wants.
+- Extract clean filters in JSON ONLY (no extra text).
 
 Return JSON:
 {
   "action": "set_model" | "search_products" | "noop",
   "payload": {
-    "model": "-",
-    "modelFull": "-",
-    "material": "-",
-    "color": "-",
-    "brand": "-"
+    "model": "-",      // short model text like "13pm", "s24u", "note11", "a54" or a short phrase like "iphone 13 pro max"
+    "modelFull": "-",  // optional, more human-readable model name
+    "material": "-",   // one of: [ضد ضربه, شفاف, سیلیکونی, فانتزی, چرمی, مات] or "-"
+    "color": "-",      // one of: [مشکی, سفید, قرمز, آبی, زرد, سبز, بنفش, صورتی, سرمه‌ای] or "-"
+    "brand": "-"       // brand of CASE (not phone): like "Nike", "Baseus", etc. usually "-" unless clearly a case brand
   },
-  "say": "الان برات می‌گردم…"
+  "say": "یک جمله دوستانه کوتاه برای کاربر"
 }
 
-Rules:
-- No repetition.
-- Respond in Persian.
-- Normalize ("siliconi"→"سیلیکونی").
-- If unknown → "-".
+Normalization rules (very important):
+- Do NOT repeat user text. Map to the fixed MATERIALS and COLORS lists.
+- Examples for MATERIAL:
+  - "ژله ای", "نرم", "سیلیکون", "soft" → "سیلیکونی"
+  - "ضد شوک", "هارد کیس", "محکم", "مردونه خشن" → "ضد ضربه"
+  - "ساده شفاف", "کریستالی", "شفاف ژله ای" → "شفاف"
+  - "طرح دار", "گل گلی", "رنگی رنگی", "کارتونی", "دخترونه خفن" → "فانتزی"
+  - "چرم", "چرمی", "کیف چرمی", "محافظ کلاسیک" → "چرمی"
+  - "مات", "simple", "smoked" → "مات"
+- Examples for COLOR:
+  - "dark", "manly", "مردونه", "تیره" → "مشکی"
+  - "girl", "دخترونه", "صورتی کم رنگ" → "صورتی"
+  - "آبی نفتی", "سرمه ای" → "سرمه‌ای"
+  - If unsure → "-"
+
+Action rules:
+- If user mainly gives phone model (e.g. "آیفون ۱۳ پرومکس", "s24 ultra", "redmi note 11"):
+  → action = "set_model"
+- If user asks for a style while model is already known from previous messages:
+  → action = "search_products"
+- If user gives both model + style in one sentence:
+  → action = "search_products"
+- If nothing useful detected:
+  → action = "noop"
+
+Always answer in Persian for the "say" field (friendly, short).
   `;
 
   return [
@@ -95,13 +119,18 @@ function extractJson(s) {
 export async function parseText(userText, history = []) {
   try {
     const content = await callOpenRouter(buildPrompt(userText, history));
+
+    console.log("🟦 RAW AI RESPONSE:", content);
+
     const obj = extractJson(content);
+
+    console.log("🟩 PARSED JSON OBJECT:", obj);
 
     if (!obj) return safeDefault();
 
     const payload = obj.payload || {};
 
-    return {
+    const result = {
       action: obj.action || "noop",
       payload: {
         model: payload.model || "-",
@@ -112,7 +141,12 @@ export async function parseText(userText, history = []) {
       },
       say: typeof obj.say === "string" ? obj.say : "",
     };
-  } catch {
+
+    console.log("🟨 FINAL PAYLOAD:", result.payload);
+
+    return result;
+  } catch (err) {
+    console.error("❌ parseText ERROR:", err);
     return safeDefault();
   }
 }

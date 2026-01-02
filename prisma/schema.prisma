@@ -1,94 +1,69 @@
-// ========== Generator ==========
 generator client {
   provider = "prisma-client-js"
 }
 
-// ========== Data Source ==========
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
 }
 
-// ===============================
-// USER MODEL
-// ===============================
 model User {
-  id         Int     @id @default(autoincrement())
-  telegramId String  @unique
+  id         Int        @id @default(autoincrement())
+  telegramId String     @unique
   fullName   String?
   phone      String?
   city       String?
   address    String?
-
-  orders    Order[]
-  cartItems CartItem[]
-
-  createdAt DateTime @default(now())
+  createdAt  DateTime   @default(now())
+  cartItems  CartItem[]
+  orders     Order[]
 }
 
-// ===============================
-// PRODUCT MODEL
-// ===============================
 model Product {
-  id             Int     @id @default(autoincrement())
+  id             Int         @id @default(autoincrement())
   model          String
-  brand          String?
-  material       String?
-  color          String?
+  modelFull      String?
+  brand          String
+  material       String
+  color          String
   price          Int
   imageUrl       String?
+  createdAt      DateTime    @default(now())
+  available      Boolean    @default(true)
+  embedding      Float[]
   telegramFileId String?
-  embedding      Float[] // 
-
-  createdAt DateTime @default(now())
-
-  // 🔥 VERY IMPORTANT: Opposite relations
-  cartItems  CartItem[]
-  orderItems OrderItem[]
+  cartItems      CartItem[]
+  orderItems     OrderItem[]
 }
 
-// ===============================
-// CART ITEM MODEL
-// ===============================
 model CartItem {
-  id        Int @id @default(autoincrement())
+  id        Int     @id @default(autoincrement())
   userId    Int
   productId Int
-  qty       Int @default(1)
-
-  // Relations
-  user    User    @relation(fields: [userId], references: [id])
-  product Product @relation(fields: [productId], references: [id])
+  qty       Int     @default(1)
+  product   Product @relation(fields: [productId], references: [id])
+  user      User    @relation(fields: [userId], references: [id])
 }
 
-// ===============================
-// ORDER MODEL
-// ===============================
 model Order {
-  id         Int      @id @default(autoincrement())
+  id         Int         @id @default(autoincrement())
   userId     Int
   totalPrice Int
-  status     String   @default("pending")
-  paymentUrl String?
+  status     String      @default("pending")
+  createdAt  DateTime    @default(now())
   address    String?
   city       String?
   phone      String?
-  createdAt  DateTime @default(now())
-
-  user  User        @relation(fields: [userId], references: [id])
-  items OrderItem[]
+  paymentUrl String?
+  user       User        @relation(fields: [userId], references: [id])
+  items      OrderItem[]
 }
 
-// ===============================
-// ORDER ITEM MODEL
-// ===============================
 model OrderItem {
-  id        Int @id @default(autoincrement())
+  id        Int     @id @default(autoincrement())
   orderId   Int
   productId Int
   qty       Int
   price     Int
-
-  order   Order   @relation(fields: [orderId], references: [id])
-  product Product @relation(fields: [productId], references: [id])
+  order     Order   @relation(fields: [orderId], references: [id])
+  product   Product @relation(fields: [productId], references: [id])
 }

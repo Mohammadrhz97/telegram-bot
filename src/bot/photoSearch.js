@@ -3,6 +3,7 @@
 
 import { prisma } from "../db.js";
 import { getImageEmbeddingFromTelegram } from "../ai/localEmbedding.js";
+import { userCheckoutState } from "./state.js";
 
 // --------------------------------------
 // 🔹 Cosine similarity (safe)
@@ -58,8 +59,16 @@ export function registerPhotoSearchHandlers(bot) {
   bot.on("photo", async (ctx, next) => {
     try {
       // 1) Get the highest quality photo
+      const telegramId = ctx.from.id.toString();
       const photos = ctx.message.photo || [];
       if (!photos.length) throw new Error("no-photo");
+      if (ctx.session && typeof ctx.session === "object" && ctx.session.mode) {
+        return next();
+      }
+
+      if (userCheckoutState.has(telegramId)) {
+        return next();
+      }
 
       const fileId = photos[photos.length - 1].file_id;
 
@@ -101,9 +110,8 @@ export function registerPhotoSearchHandlers(bot) {
           p,
           score: cosineSim(emb, p.embedding),
         }))
-        .filter((x) => x.score >= 0)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 10); // return top 10
+        .filter((x) => x.score >= 0.5)
+        .slice(0, 10);
 
       if (!ranked.length) {
         await ctx.reply("❌ هیچ قاب مشابهی پیدا نکردم.");
@@ -136,6 +144,7 @@ export function registerPhotoSearchHandlers(bot) {
           await ctx.reply(caption, { reply_markup });
         }
       }
+      next();
     } catch (err) {
       console.log("PHOTO_SEARCH_ERR:", err);
       await ctx.reply("❌ خطا در جستجوی تصویری. دوباره امتحان کن.");

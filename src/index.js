@@ -6,47 +6,67 @@ import { Telegraf } from "telegraf";
 
 // ===== Register Bot Modules =====
 import { registerUserHandlers } from "./bot/user.js";
-import { registerAddProductHandlers } from "./bot/addProduct.js";
+import { registerAdminAddProductHandlers } from "./bot/adminAddProduct.js"; // ← FIXED
 import { registerSearchHandlers } from "./bot/search.js";
 import { registerPhotoSearchHandlers } from "./bot/photoSearch.js";
 import { registerProductsHandlers } from "./bot/products.js";
 import { registerCartHandlers } from "./bot/cartHandlers.js";
 import { registerCheckoutHandlers } from "./bot/checkout.js";
-
-// ⭐ NEW: Admin Panel (UI + Buttons + Reports)
+import { registerAdminHandlers } from "./bot/admin.js";
 import { registerAdminPanel } from "./bot/adminPanel.js";
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
+const sessionStore = new Map();
+bot.use(async (ctx, next) => {
+  const key =
+    ctx.from?.id?.toString() ||
+    ctx.chat?.id?.toString() ||
+    ctx.message?.chat?.id?.toString();
+
+  if (!key) return next();
+
+  ctx.session = sessionStore.get(key) || null;
+
+  await next();
+
+  if (ctx.session === null || typeof ctx.session === "undefined") {
+    sessionStore.delete(key);
+  } else {
+    sessionStore.set(key, ctx.session);
+  }
+});
+
 // ===============================
-// ⚠️ ORDER IS IMPORTANT — DO NOT CHANGE
+// ✅ CORRECT ORDER — FIXED FOR 2025
 // ===============================
 
-// 1) Basic user commands
-registerUserHandlers(bot);
-
-// 2) Admin add-product flow
-registerAddProductHandlers(bot);
-
-// 3) AI text search
-registerSearchHandlers(bot);
-
-// 4) AI photo search (needs lastModel)
-registerPhotoSearchHandlers(bot);
-
-// 5) Product listing
-registerProductsHandlers(bot);
-
-// 6) Cart handlers
-registerCartHandlers(bot);
-
-// 7) Checkout system
-registerCheckoutHandlers(bot);
-
-// 8) Admin Panel (menu + orders + reports)
+// 1) Admin Add Product & Admin Panel (High Priority)
+registerAdminHandlers(bot);
+registerAdminAddProductHandlers(bot);
 registerAdminPanel(bot);
 
-// ===============================
+// 2) Checkout System
+// باید قبل از جستجوی متنی باشد تا موقع آدرس گرفتن، ربات سرچ نکند
+registerCheckoutHandlers(bot);
+
+// 3) Cart Handlers
+// مدیریت سبد خرید
+registerCartHandlers(bot);
+
+// 4) Basic user commands (/start, /help)
+registerUserHandlers(bot);
+
+// 5) Product Listing & Brand Filters
+registerProductsHandlers(bot);
+
+// 6) AI Photo Search
+// جستجوی عکس (باید بعد از مراحل مدیریت و خرید باشد)
+registerPhotoSearchHandlers(bot);
+
+// 7) AI Text Search (Lowest Priority)
+// چون این هندلر به همه متن‌ها واکنش نشان می‌دهد، باید آخرین لایه باشد
+registerSearchHandlers(bot);
 
 bot.launch();
-console.log("🚀 Bot is running (AI text + AI image + Admin Panel)...");
+console.log("🚀 Bot is running...");
