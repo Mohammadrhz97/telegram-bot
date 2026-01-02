@@ -119,13 +119,7 @@ function extractJson(s) {
 export async function parseText(userText, history = []) {
   try {
     const content = await callOpenRouter(buildPrompt(userText, history));
-
-    console.log("🟦 RAW AI RESPONSE:", content);
-
     const obj = extractJson(content);
-
-    console.log("🟩 PARSED JSON OBJECT:", obj);
-
     if (!obj) return safeDefault();
 
     const payload = obj.payload || {};
@@ -141,8 +135,6 @@ export async function parseText(userText, history = []) {
       },
       say: typeof obj.say === "string" ? obj.say : "",
     };
-
-    console.log("🟨 FINAL PAYLOAD:", result.payload);
 
     return result;
   } catch (err) {

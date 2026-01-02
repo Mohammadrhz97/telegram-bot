@@ -22,13 +22,9 @@ let pipePromise = null;
 // Load VIT image-feature-extraction pipeline once
 async function getImageEmbeddingPipeline() {
   if (!pipePromise) {
-    console.log("Loading local VIT model...");
-
     pipePromise = pipeline("image-feature-extraction", MODEL_NAME, {
       local_files_only: true,
     });
-
-    console.log("VIT model loaded.");
   }
   return pipePromise;
 }
@@ -63,8 +59,6 @@ export async function getImageEmbeddingFromTelegram(fileId, ctx) {
     for (let j = 0; j < dim; j++) {
       pooled[j] /= numPatches;
     }
-
-    console.log("🔢 Final embedding length:", pooled.length);
 
     return pooled;
   } catch (err) {

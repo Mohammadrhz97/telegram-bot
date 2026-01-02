@@ -42,8 +42,6 @@ Thumbs.db
 models/
 models/**
 
-# Old bot
-old-bot/
 
 # Backup files
 *.old
