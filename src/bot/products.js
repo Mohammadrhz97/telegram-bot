@@ -3,7 +3,7 @@
 
 import { prisma } from "../db.js";
 
-// ⬅️ Importing admin functions for product management access
+//  Importing admin functions for product management access
 import { isAdmin, buildProductKeyboard } from "./adminAddProduct.js";
 
 // Helper mapping to transform selected brand into keywords for modelFull search

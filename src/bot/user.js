@@ -21,6 +21,6 @@ export function registerUserHandlers(bot) {
       console.error("User upsert error:", err);
     }
 
-    return next(); // allow search.js to run /start response
+    return next();
   });
 }

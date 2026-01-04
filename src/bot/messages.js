@@ -3,7 +3,7 @@ export default {
   NOT_ADMIN_ADD: "⛔ فقط ادمین می‌تواند محصول اضافه کند.",
   NOT_ADMIN_ACTION: "⛔ شما دسترسی لازم را ندارید.",
   NOT_ADMIN_ACTION_CB: "⛔ فقط ادمین می‌تواند این کار را انجام دهد.",
-  SESSION_INACTIVE_CB: "جلسه منقضی شده است.",
+  SESSION_INACTIVE_CB: "سشن منقضی شده است.",
   MODEL_STEP_INACTIVE_CB: "در حال حاضر مرحله مدل فعال نیست.",
   ADDPRODUCT_INTRO:
     "📱✨ *اضافه کردن قاب جدید*\n\n" +

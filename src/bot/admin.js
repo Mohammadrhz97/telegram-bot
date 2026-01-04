@@ -81,26 +81,38 @@ export function registerAdminHandlers(bot) {
   // ----------------------------
   bot.action(/^confirm_(\d+)$/, async (ctx) => {
     if (ctx.from.id.toString() !== process.env.TELEGRAM_ADMIN_ID) {
-      return ctx.answerCbQuery("⛔");
+      return ctx.answerCbQuery("⛔ دسترسی غیرمجاز");
     }
 
     const orderId = Number(ctx.match[1]);
 
     const order = await prisma.order.update({
       where: { id: orderId },
-      data: { status: "confirmed" },
+      data: { status: "paid" },
       include: { user: true },
+    });
+
+    const telegramId = order.user?.telegramId;
+    if (!telegramId) {
+      await ctx.answerCbQuery("⚠️ کاربر پیدا نشد");
+      return;
+    }
+
+    userCheckoutState.set(telegramId, {
+      step: "city",
+      orderId,
+      tempData: {},
     });
 
     await ctx.answerCbQuery("تأیید شد ✅");
     await ctx.reply(`✅ پرداخت سفارش #${orderId} تأیید شد.`);
 
-    if (order.user?.telegramId) {
-      await ctx.telegram.sendMessage(
-        order.user.telegramId,
-        `✅ پرداخت سفارش شما (#${orderId}) تأیید شد و در صف ارسال قرار گرفت.`
-      );
-    }
+    await ctx.telegram.sendMessage(
+      telegramId,
+      "✅ پرداخت شما تأیید شد 🎉\n\n" +
+        "برای تکمیل سفارش، لطفاً اطلاعات ارسال را وارد کنیم.\n" +
+        "🏙️ نام شهر خود را بنویسید:"
+    );
   });
 
   // ----------------------------

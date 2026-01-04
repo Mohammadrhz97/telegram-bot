@@ -19,9 +19,22 @@ export function registerCheckoutHandlers(bot) {
     if (!cart || !cart.length) {
       return ctx.reply("🛒 سبد خریدت خالیه!");
     }
+    const order = await prisma.order.create({
+      data: {
+        telegramId,
+        status: "awaiting_payment",
+        totalPrice: cart.reduce((s, i) => s + i.price, 0),
+      },
+    });
 
-    userCheckoutState.set(telegramId, { step: "city", tempData: {} });
-    await ctx.reply("🏙️ لطفاً نام شهر خود را بنویسید:");
+    userCheckoutState.set(telegramId, {
+      step: "awaiting_payment",
+      orderId: order.id,
+    });
+    await ctx.reply(
+      "🧾 برای شروع ثبت سفارش، لطفاً تصویر فیش پرداخت را ارسال کنید.\n\n" +
+        "⏳ بعد از تأیید ادمین، اطلاعات ارسال از شما گرفته می‌شود."
+    );
   });
 
   // ----------------------------
@@ -88,44 +101,47 @@ export function registerCheckoutHandlers(bot) {
   bot.on("photo", async (ctx, next) => {
     const telegramId = ctx.from.id.toString();
     const state = userCheckoutState.get(telegramId);
-    if (!state || state.step !== "payment") return next();
 
-    try {
-      const orderId = state.orderId;
-      const fileId = ctx.message.photo.pop().file_id;
-      const fileUrl = await ctx.telegram.getFileLink(fileId);
+    if (!state || state.step !== "awaiting_payment") return next();
 
-      await prisma.order.update({
-        where: { id: orderId },
-        data: {
-          paymentUrl: fileUrl.href,
-          status: "paid",
+    const fileId = ctx.message.photo.pop().file_id;
+    const fileUrl = await ctx.telegram.getFileLink(fileId);
+
+    await prisma.order.update({
+      where: { id: state.orderId },
+      data: {
+        paymentUrl: fileUrl.href,
+        status: "awaiting_admin_confirmation",
+      },
+    });
+
+    userCheckoutState.set(telegramId, {
+      step: "awaiting_admin_confirmation",
+      orderId: state.orderId,
+    });
+
+    await ctx.reply(
+      "✅ فیش پرداخت دریافت شد.\n" +
+        "⏳ منتظر تأیید ادمین هستیم. به‌محض تأیید بهت خبر می‌دم."
+    );
+    if (process.env.TELEGRAM_ADMIN_ID) {
+      await ctx.telegram.sendPhoto(process.env.TELEGRAM_ADMIN_ID, fileId, {
+        caption: `🧾 فیش پرداخت سفارش #${state.orderId}`,
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "✅ تأیید پرداخت",
+                callback_data: `confirm_${state.orderId}`,
+              },
+              {
+                text: "❌ رد پرداخت",
+                callback_data: `reject_${state.orderId}`,
+              },
+            ],
+          ],
         },
       });
-
-      userCheckoutState.delete(telegramId);
-
-      await ctx.reply("✅ فیش پرداخت ثبت شد و در انتظار بررسی ادمین است.");
-
-      if (process.env.TELEGRAM_ADMIN_ID) {
-        await ctx.telegram.sendPhoto(process.env.TELEGRAM_ADMIN_ID, fileId, {
-          caption: `🧾 فیش پرداخت سفارش #${orderId}\n👤 ${ctx.from.first_name}`,
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: "✅ تأیید پرداخت",
-                  callback_data: `confirm_${orderId}`,
-                },
-                { text: "❌ رد پرداخت", callback_data: `reject_${orderId}` },
-              ],
-            ],
-          },
-        });
-      }
-    } catch (err) {
-      console.error("Payment upload error:", err);
-      await ctx.reply("❌ خطا در ثبت فیش پرداخت.");
     }
   });
 }

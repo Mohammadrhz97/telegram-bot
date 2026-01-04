@@ -76,7 +76,7 @@ export function registerPhotoSearchHandlers(bot) {
       const emb = await getImageEmbeddingFromTelegram(fileId, ctx);
 
       if (!emb || emb.length !== 768) {
-        await ctx.reply("❌ نتونستم از این عکس ایمبدینگ بسازم.");
+        await ctx.reply("❌ نتونستم از این عکس رو پردازش بکنم.");
         return;
       }
 
@@ -90,7 +90,9 @@ export function registerPhotoSearchHandlers(bot) {
       });
 
       if (!products.length) {
-        await ctx.reply("❌ هیچ محصولی با ایمبدینگ در دیتابیس وجود ندارد.");
+        await ctx.reply(
+          "❌ هیچ محصولی شبیه به عکسی که برام فرستادی پیدا نکردم."
+        );
         return;
       }
 
@@ -100,7 +102,9 @@ export function registerPhotoSearchHandlers(bot) {
       );
 
       if (!validProducts.length) {
-        await ctx.reply("❌ هیچ محصول معتبری برای مقایسه پیدا نشد.");
+        await ctx.reply(
+          "❌ هیچ محصولی شبیه به عکسی که برام فرستادی پیدا نکردم."
+        );
         return;
       }
 
@@ -114,7 +118,9 @@ export function registerPhotoSearchHandlers(bot) {
         .slice(0, 10);
 
       if (!ranked.length) {
-        await ctx.reply("❌ هیچ قاب مشابهی پیدا نکردم.");
+        await ctx.reply(
+          "❌ هیچ محصولی شبیه به عکسی که برام فرستادی پیدا نکردم."
+        );
         return;
       }
 
