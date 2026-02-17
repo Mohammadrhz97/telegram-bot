@@ -1,4 +1,5 @@
 // src/index.js
+import "./db.js";
 import dotenv from "dotenv";
 dotenv.config();
 
