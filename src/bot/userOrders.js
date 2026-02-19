@@ -45,7 +45,7 @@ export function registerUserOrderHandlers(bot) {
     } catch (err) {
       console.error("MyOrders error:", err);
       await ctx.reply(
-        "❌ خطا در دریافت سفارش‌ها. لطفاً بعداً دوباره تلاش کنید."
+        "❌ خطا در دریافت سفارش‌ها. لطفاً بعداً دوباره تلاش کنید.",
       );
     }
   });

@@ -6,19 +6,21 @@ import { suggestModelCodes, MODEL_CATALOG } from "../ai/suggestModel.js";
 import { displayProductList } from "./products.js";
 import M from "./messages.js";
 
-const ADMIN_ID = process.env.TELEGRAM_ADMIN_ID?.toString();
+const ADMIN_IDS = process.env.TELEGRAM_ADMIN_IDS?.split(",").map((id) =>
+  id.trim(),
+);
+
+function isAdmin(ctx) {
+  return ADMIN_IDS?.includes(ctx.from?.id?.toString());
+}
 
 // map shortcode => label
 const MODEL_LABEL_BY_SHORTCODE = new Map(
-  MODEL_CATALOG.map((e) => [e.shortcode.toLowerCase(), e.label])
+  MODEL_CATALOG.map((e) => [e.shortcode.toLowerCase(), e.label]),
 );
 
 function getLabelForShortcode(shortcode = "") {
   return MODEL_LABEL_BY_SHORTCODE.get(shortcode.toLowerCase()) || null;
-}
-
-function isAdmin(ctx) {
-  return ctx.from?.id?.toString() === ADMIN_ID;
 }
 
 function collectSummaryContext(ctx) {
@@ -37,7 +39,7 @@ function buildProductSummaryText(product) {
   const price =
     typeof product.price === "number"
       ? new Intl.NumberFormat("fa-IR").format(product.price)
-      : product.price ?? "";
+      : (product.price ?? "");
 
   let text =
     `📱 مدل: ${product.model}\n` +
@@ -99,7 +101,7 @@ async function refreshProductSummary(ctx, product, summaryContext = null) {
       messageId,
       inlineMessageId,
       text, // The new caption text
-      { reply_markup }
+      { reply_markup },
     );
   } catch (err) {
     // This catch block handles:
@@ -113,7 +115,7 @@ async function refreshProductSummary(ctx, product, summaryContext = null) {
         messageId,
         inlineMessageId,
         text,
-        { reply_markup }
+        { reply_markup },
       );
     } catch (textEditErr) {
       console.error("REFRESH_SUMMARY_FAILED", textEditErr); // 3. Final Fallback: If both caption and text editing fail, send a new message.
@@ -228,7 +230,7 @@ export function registerAdminAddProductHandlers(bot) {
         return ctx.reply(
           helpText +
             "\n❗ *مدل معتبر نبود.*\nلطفاً دقیق‌تر بنویس یا از پیشنهادها استفاده کن.",
-          { parse_mode: "Markdown" }
+          { parse_mode: "Markdown" },
         );
       }
 
@@ -303,13 +305,13 @@ export function registerAdminAddProductHandlers(bot) {
     try {
       await ctx.editMessageText(
         `✅ مدل انتخاب شد: **${selectedFullName}**\n\nلطفاً نام برند قاب را ارسال کنید.`, // ⬅️ استفاده از نام کامل
-        { parse_mode: "Markdown" }
+        { parse_mode: "Markdown" },
       );
     } catch (err) {
       // if edit fails, just reply
       await ctx.reply(
         `✅ مدل انتخاب شد: **${selectedFullName}**\n\nلطفاً نام برند قاب را ارسال کنید.`, // ⬅️ استفاده از نام کامل
-        { parse_mode: "Markdown" }
+        { parse_mode: "Markdown" },
       );
     }
     await ctx.answerCbQuery("مدل ذخیره شد.");
@@ -339,7 +341,7 @@ export function registerAdminAddProductHandlers(bot) {
       try {
         const embedding = await getImageEmbeddingFromTelegram(
           file.file_id,
-          ctx
+          ctx,
         );
         if (!embedding) {
           return ctx.reply("❌ خطا در ساخت embedding. لطفاً دوباره تلاش کن.");
@@ -374,7 +376,7 @@ export function registerAdminAddProductHandlers(bot) {
       try {
         const embedding = await getImageEmbeddingFromTelegram(
           file.file_id,
-          ctx
+          ctx,
         );
         if (!embedding) {
           return ctx.reply("❌ خطا در ساخت embedding. لطفاً دوباره تلاش کن.");
@@ -401,7 +403,7 @@ export function registerAdminAddProductHandlers(bot) {
 
     // otherwise: ignore or instruct
     return ctx.reply(
-      "❗ عکس ثبت نشد — ابتدا /addproduct را اجرا کن یا فرایند ویرایش را شروع کن."
+      "❗ عکس ثبت نشد — ابتدا /addproduct را اجرا کن یا فرایند ویرایش را شروع کن.",
     );
   });
 
@@ -435,7 +437,7 @@ export function registerAdminAddProductHandlers(bot) {
     await ctx.reply(
       `✏️ در حال ویرایش فیلد "${field}"\nمقدار کنونی: ${currentValue}\n\n${
         M.EDIT_PROMPTS[field] || "مقدار جدید را ارسال کنید:"
-      }`
+      }`,
     );
   });
 
@@ -478,7 +480,7 @@ export function registerAdminAddProductHandlers(bot) {
           await ctx.telegram.deleteMessage(
             undefined,
             undefined,
-            sc.inlineMessageId
+            sc.inlineMessageId,
           );
         } else if (sc.chatId && sc.messageId) {
           await ctx.telegram.deleteMessage(sc.chatId, sc.messageId);
@@ -513,7 +515,7 @@ async function handleEditFlowText(ctx, input) {
 
   if (s.step !== "edit_text") {
     return ctx.reply(
-      "❗ در این مرحله متن قابل دریافت نیست. اگر قصد لغو دارید /cancel را بزنید."
+      "❗ در این مرحله متن قابل دریافت نیست. اگر قصد لغو دارید /cancel را بزنید.",
     );
   }
 
@@ -531,7 +533,7 @@ async function handleEditFlowText(ctx, input) {
       const normalized = normalizeAnyModel(input, input);
       if (!normalized)
         return ctx.reply(
-          "❗ مدل قابل شناسایی نیست. لطفاً دقیق‌تر بنویس یا از پیشنهادها استفاده کن."
+          "❗ مدل قابل شناسایی نیست. لطفاً دقیق‌تر بنویس یا از پیشنهادها استفاده کن.",
         );
       updateData.model = normalized.shortcode;
       // only set modelFull if it was empty previously (to avoid overwriting custom names)

@@ -1,15 +1,4 @@
-/**
- * هوشمندسازی فیلتر جستجوی محصول بر اساس متن کاربر
- * - تشخیص جنس قاب (material)
- * - رنگ (color)
- * - استایل (style)
- * - برند (brand)
- * - محدوده قیمت (price)
- */
-
-// ========== هوشمند سازی فیلترها برای نیاز مشتری ==========
-
-// مترادف‌ها برای جنس
+// Mapping user-friendly material names to canonical material list
 const MATERIAL_ALIASES = {
   محکم: ["ضد ضربه", "هارد کیس"],
   "ضد ضربه": ["ضد ضربه", "هارد کیس"],
@@ -21,7 +10,8 @@ const MATERIAL_ALIASES = {
   فانتزی: ["فانتزی"],
   "ژله ای": ["ژله ای", "سیلیکونی"],
 };
-// استایل‌ها که ترکیب رنگ + جنس هستن
+
+// Predefined style mapping for quick filtering by style
 const STYLE_MAP = {
   مردونه: {
     materials: ["چرمی", "ضد ضربه"],
@@ -46,7 +36,7 @@ const STYLE_MAP = {
   لاکچری: { materials: ["چرمی"], colors: ["طلایی", "نقره‌ای", "مشکی"] },
 };
 
-// مترادف‌ها برای رنگ
+// Color grouping / aliasing for easier matching
 const COLOR_ALIASES = {
   دخترونه: ["صورتی", "بنفش", "طلایی", "قرمز", "نقره‌ای روشن"],
   مردونه: ["مشکی", "سرمه‌ای", "طوسی", "سبز تیره", "قهوه‌ای"],
@@ -54,39 +44,39 @@ const COLOR_ALIASES = {
   لاکچری: ["طلایی", "نقره‌ای", "رزگلد"],
 };
 
-// برندها → برای سرچ مستقیم
+// Brands we care about for filtering
 const KNOWN_BRANDS = ["Nike", "Gucci", "Adidas", "Supreme", "Apple", "Samsung"];
 
-/**
-
- * ورودی: متن کاربر + JSON اولیه AI
- * خروجی: فیلترهای توسعه یافته برای دیتابیس
- */
-// از تمام مقادیر داخل MATERIAL_ALIASES و COLOR_ALIASES یه لیست کامل بسازیم
+// Flatten all unique material names from aliases
 export const ALL_MATERIALS = [
   ...new Set(
-    Object.keys(MATERIAL_ALIASES).concat(...Object.values(MATERIAL_ALIASES))
+    Object.keys(MATERIAL_ALIASES).concat(...Object.values(MATERIAL_ALIASES)),
   ),
 ];
 
+// Flatten all unique colors from aliases
 export const ALL_COLORS = [
   ...new Set(
-    Object.keys(COLOR_ALIASES).concat(...Object.values(COLOR_ALIASES))
+    Object.keys(COLOR_ALIASES).concat(...Object.values(COLOR_ALIASES)),
   ),
 ];
 
+/**
+ * Expand parsed filters based on user input and state.
+ * Merges material/color aliases, styles, brands, and price hints.
+ */
 export function expandFilters(parsed, userText = "", dState = {}) {
   const materials = [];
   const colors = [];
   let brand = parsed.brand || "-";
   let priceRange = null;
 
-  // 👇 اگر مدل توی parsed خالیه ولی قبلاً ذخیره شده، از dState بخون
+  // Use last selected model if none provided
   if ((!parsed.model || parsed.model === "-") && dState.lastModel) {
     parsed.model = dState.lastModel;
   }
 
-  // ===== پشتیبانی از زنونه / مردونه / دخترونه / پسرونه =====
+  // Infer material/color from gender keywords if not explicitly provided
   if (/زنونه|دخترونه/.test(userText)) {
     if (!parsed.material || parsed.material === "-")
       parsed.material = "دخترونه";
@@ -97,7 +87,7 @@ export function expandFilters(parsed, userText = "", dState = {}) {
     if (!parsed.color || parsed.color === "-") parsed.color = "مردونه";
   }
 
-  // ===== جنس
+  // Expand material aliases
   if (parsed.material && parsed.material !== "-") {
     if (MATERIAL_ALIASES[parsed.material]) {
       materials.push(...MATERIAL_ALIASES[parsed.material]);
@@ -106,13 +96,14 @@ export function expandFilters(parsed, userText = "", dState = {}) {
     }
   }
 
-  // 🔹 بررسی مستقیم متن کاربر برای جنس
+  // Catch all materials mentioned in user text
   for (const key of Object.keys(MATERIAL_ALIASES)) {
     if (userText.includes(key)) {
       materials.push(...MATERIAL_ALIASES[key]);
     }
   }
-  // استایل
+
+  // Map styles to materials and colors
   for (const [key, map] of Object.entries(STYLE_MAP)) {
     if (userText.includes(key)) {
       if (map.materials) materials.push(...map.materials);
@@ -120,7 +111,7 @@ export function expandFilters(parsed, userText = "", dState = {}) {
     }
   }
 
-  // ===== رنگ
+  // Expand color aliases
   if (parsed.color && parsed.color !== "-") {
     if (COLOR_ALIASES[parsed.color]) {
       colors.push(...COLOR_ALIASES[parsed.color]);
@@ -129,14 +120,14 @@ export function expandFilters(parsed, userText = "", dState = {}) {
     }
   }
 
-  // 🔹 بررسی مستقیم متن کاربر برای رنگ
+  // Catch all colors mentioned in user text
   for (const key of Object.keys(COLOR_ALIASES)) {
     if (userText.includes(key)) {
       colors.push(...COLOR_ALIASES[key]);
     }
   }
 
-  // ===== برند
+  // Detect brand if not already set
   if (!brand || brand === "-") {
     for (const b of KNOWN_BRANDS) {
       if (userText.toLowerCase().includes(b.toLowerCase())) {
@@ -146,9 +137,10 @@ export function expandFilters(parsed, userText = "", dState = {}) {
     }
   }
 
-  // ===== بازه قیمتی
+  // Extract price numbers from user text
   const priceNums = userText.match(/\d+/g)?.map((n) => parseInt(n, 10)) || [];
 
+  // Infer price range based on text hints
   if (/زیر\s*\d+/.test(userText)) {
     priceRange = { max: priceNums[0] };
   } else if (/بالای\s*\d+/.test(userText)) {

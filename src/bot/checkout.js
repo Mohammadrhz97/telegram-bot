@@ -8,6 +8,9 @@ import { userCheckoutState } from "./state.js";
 import { getCart } from "./cart.js";
 import { createOrder } from "./order.js";
 
+const ADMIN_IDS =
+  process.env.TELEGRAM_ADMIN_IDS?.split(",").map((id) => id.trim()) || [];
+
 export function registerCheckoutHandlers(bot) {
   // ----------------------------
   // Step 1️⃣ : Start checkout
@@ -33,7 +36,7 @@ export function registerCheckoutHandlers(bot) {
     });
     await ctx.reply(
       "🧾 برای شروع ثبت سفارش، لطفاً تصویر فیش پرداخت را ارسال کنید.\n\n" +
-        "⏳ بعد از تأیید ادمین، اطلاعات ارسال از شما گرفته می‌شود."
+        "⏳ بعد از تأیید ادمین، اطلاعات ارسال از شما گرفته می‌شود.",
     );
   });
 
@@ -66,19 +69,16 @@ export function registerCheckoutHandlers(bot) {
           telegramId,
           state.tempData,
           async (msg) => {
-            if (process.env.TELEGRAM_ADMIN_ID) {
-              await ctx.telegram.sendMessage(
-                process.env.TELEGRAM_ADMIN_ID,
-                msg
-              );
+            for (const adminId of ADMIN_IDS) {
+              await ctx.telegram.sendMessage(adminId, msg);
             }
-          }
+          },
         );
 
         await ctx.reply(
           `✅ سفارش ثبت شد!\n\n📦 شماره سفارش: ${
             order.id
-          }\n💰 مبلغ کل: ${order.totalPrice.toLocaleString()} تومان`
+          }\n💰 مبلغ کل: ${order.totalPrice.toLocaleString()} تومان`,
         );
 
         userCheckoutState.set(telegramId, {
@@ -122,10 +122,10 @@ export function registerCheckoutHandlers(bot) {
 
     await ctx.reply(
       "✅ فیش پرداخت دریافت شد.\n" +
-        "⏳ منتظر تأیید ادمین هستیم. به‌محض تأیید بهت خبر می‌دم."
+        "⏳ منتظر تأیید ادمین هستیم. به‌محض تأیید بهت خبر می‌دم.",
     );
-    if (process.env.TELEGRAM_ADMIN_ID) {
-      await ctx.telegram.sendPhoto(process.env.TELEGRAM_ADMIN_ID, fileId, {
+    for (const adminId of ADMIN_IDS) {
+      await ctx.telegram.sendPhoto(adminId, fileId, {
         caption: `🧾 فیش پرداخت سفارش #${state.orderId}`,
         reply_markup: {
           inline_keyboard: [

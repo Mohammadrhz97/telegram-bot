@@ -17,8 +17,9 @@ try {
   fs.mkdirSync(reportsDir, { recursive: true });
 } catch {}
 
-// admin id from .env
-const ADMIN_ID = process.env.TELEGRAM_ADMIN_ID || "";
+// admin ids from .env (comma separated)
+const ADMIN_IDS =
+  process.env.TELEGRAM_ADMIN_IDS?.split(",").map((id) => id.trim()) || [];
 
 // =========================
 // Inline Menus
@@ -78,7 +79,7 @@ function statusLabel(status) {
 
 // check admin access
 function isAdmin(ctx) {
-  return ctx.from && ctx.from.id.toString() === ADMIN_ID;
+  return ctx.from && ADMIN_IDS.includes(ctx.from.id.toString());
 }
 
 // compute time range + label for reports
@@ -115,7 +116,7 @@ export function registerAdminPanel(bot) {
 
     await ctx.reply(
       "👑 خوش آمدید!\n\nدر این بخش می‌توانید سفارش‌ها، پرداخت‌ها و گزارش‌های فروش را مدیریت کنید.",
-      { reply_markup: adminMainMenu() }
+      { reply_markup: adminMainMenu() },
     );
   });
 
@@ -145,7 +146,7 @@ export function registerAdminPanel(bot) {
           "👑 منوی اصلی مدیریت\nیک گزینه را انتخاب کنید:",
           {
             reply_markup: adminMainMenu(),
-          }
+          },
         );
         return;
       }
@@ -154,7 +155,7 @@ export function registerAdminPanel(bot) {
       if (data === "admin_orders") {
         await ctx.editMessageText(
           "🧾 مدیریت سفارش‌ها\nدر این بخش می‌توانید تمام سفارش‌ها را مشاهده، بررسی و وضعیت پرداخت را مدیریت کنید.",
-          { reply_markup: ordersMenu() }
+          { reply_markup: ordersMenu() },
         );
         return;
       }
@@ -163,7 +164,7 @@ export function registerAdminPanel(bot) {
       if (data === "admin_reports") {
         await ctx.editMessageText(
           "📈 گزارش‌های فروش\nدر این بخش می‌توانید گزارش‌های روزانه، هفتگی و ماهانه را مشاهده کرده و فایل CSV خروجی بگیرید.",
-          { reply_markup: reportsMenu() }
+          { reply_markup: reportsMenu() },
         );
         return;
       }
@@ -323,8 +324,8 @@ async function sendReport(ctx, range) {
     range === "daily"
       ? new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
       : range === "weekly"
-      ? new Date(start.getFullYear(), start.getMonth(), start.getDate() + 7)
-      : new Date(now.getFullYear(), now.getMonth() + 1, 1);
+        ? new Date(start.getFullYear(), start.getMonth(), start.getDate() + 7)
+        : new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
   const paidStatuses = ["paid", "confirmed", "shipped", "delivered"];
 
@@ -346,7 +347,7 @@ async function sendReport(ctx, range) {
   await ctx.reply(
     `${label}\n\n📊 تعداد سفارش‌ها: ${
       orders.length
-    }\n💰 مجموع فروش: ${totalRevenue.toLocaleString()} تومان`
+    }\n💰 مجموع فروش: ${totalRevenue.toLocaleString()} تومان`,
   );
 
   if (!orders.length)
@@ -398,7 +399,7 @@ async function sendReport(ctx, range) {
     const itemsText = o.items
       .map(
         (i) =>
-          `(${i.product.id}) ${i.product.model} - ${i.product.color} x${i.qty}`
+          `(${i.product.id}) ${i.product.model} - ${i.product.color} x${i.qty}`,
       )
       .join(" | ");
 

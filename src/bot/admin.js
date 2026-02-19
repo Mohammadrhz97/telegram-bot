@@ -5,12 +5,21 @@
 
 import { prisma } from "../db.js";
 
+// ✅ اضافه شد: خواندن لیست ادمین‌ها به صورت آرایه
+const adminIds = process.env.TELEGRAM_ADMIN_IDS?.split(",").map((id) =>
+  id.trim(),
+);
+
+function isAdmin(userId) {
+  return adminIds?.includes(userId.toString());
+}
+
 export function registerAdminHandlers(bot) {
   // ----------------------------
   // 📦 List orders
   // ----------------------------
   bot.command("orders", async (ctx) => {
-    if (ctx.from.id.toString() !== process.env.TELEGRAM_ADMIN_ID) {
+    if (!isAdmin(ctx.from.id)) {
       return ctx.reply("⛔ دسترسی غیرمجاز");
     }
 
@@ -58,7 +67,7 @@ export function registerAdminHandlers(bot) {
   // 🖼 Show payment proof
   // ----------------------------
   bot.action(/^showproof_(\d+)$/, async (ctx) => {
-    if (ctx.from.id.toString() !== process.env.TELEGRAM_ADMIN_ID) {
+    if (!isAdmin(ctx.from.id)) {
       return ctx.answerCbQuery("⛔");
     }
 
@@ -80,7 +89,7 @@ export function registerAdminHandlers(bot) {
   // ✅ Confirm payment
   // ----------------------------
   bot.action(/^confirm_(\d+)$/, async (ctx) => {
-    if (ctx.from.id.toString() !== process.env.TELEGRAM_ADMIN_ID) {
+    if (!isAdmin(ctx.from.id)) {
       return ctx.answerCbQuery("⛔ دسترسی غیرمجاز");
     }
 
@@ -111,7 +120,7 @@ export function registerAdminHandlers(bot) {
       telegramId,
       "✅ پرداخت شما تأیید شد 🎉\n\n" +
         "برای تکمیل سفارش، لطفاً اطلاعات ارسال را وارد کنیم.\n" +
-        "🏙️ نام شهر خود را بنویسید:"
+        "🏙️ نام شهر خود را بنویسید:",
     );
   });
 
@@ -119,7 +128,7 @@ export function registerAdminHandlers(bot) {
   // ❌ Reject payment
   // ----------------------------
   bot.action(/^reject_(\d+)$/, async (ctx) => {
-    if (ctx.from.id.toString() !== process.env.TELEGRAM_ADMIN_ID) {
+    if (!isAdmin(ctx.from.id)) {
       return ctx.answerCbQuery("⛔");
     }
 
@@ -137,7 +146,7 @@ export function registerAdminHandlers(bot) {
     if (order.user?.telegramId) {
       await ctx.telegram.sendMessage(
         order.user.telegramId,
-        `🚫 پرداخت سفارش شما (#${orderId}) رد شد. لطفاً فیش جدید ارسال کنید.`
+        `🚫 پرداخت سفارش شما (#${orderId}) رد شد. لطفاً فیش جدید ارسال کنید.`,
       );
     }
   });
