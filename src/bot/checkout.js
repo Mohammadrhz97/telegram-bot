@@ -1,8 +1,3 @@
-// ==========================
-// src/bot/checkout.js
-// Handles order checkout and payment proof upload
-// ==========================
-
 import { prisma } from "../db.js";
 import { userCheckoutState } from "./state.js";
 import { getCart, clearCart } from "./cart.js";
@@ -10,9 +5,6 @@ import { getCart, clearCart } from "./cart.js";
 const ADMIN_IDS =
   process.env.TELEGRAM_ADMIN_IDS?.split(",").map((id) => id.trim()) || [];
 
-/**
- * Internal Helper: Ensures user exists in DB
- */
 async function getOrCreateUser(telegramId) {
   let user = await prisma.user.findUnique({ where: { telegramId } });
   if (!user) {
@@ -22,33 +14,24 @@ async function getOrCreateUser(telegramId) {
 }
 
 export function registerCheckoutHandlers(bot) {
-  // ----------------------------
-  // Step 1: Initiate Checkout
-  // ----------------------------
   bot.command("checkout", async (ctx) => {
     const telegramId = ctx.from.id.toString();
 
-    // Reset any previous checkout state
     userCheckoutState.delete(telegramId);
 
-    // Check if cart has items
     const cart = await getCart(telegramId);
     if (!cart || !cart.length) {
-      return ctx.reply("🛒 سبد خریدت خالیه!");
+      return ctx.reply("🛒 Your cart is empty.");
     }
 
-    // Initialize state machine to collect info
     userCheckoutState.set(telegramId, {
       step: "city",
       tempData: {},
     });
 
-    await ctx.reply("🏙 لطفاً نام شهر خود را وارد کنید:");
+    await ctx.reply("🏙 Please enter your city:");
   });
 
-  // ----------------------------
-  // Step 2: Collect User Info (Text Handler)
-  // ----------------------------
   bot.on("text", async (ctx, next) => {
     if (ctx.message.text.startsWith("/")) return next();
 
@@ -57,34 +40,29 @@ export function registerCheckoutHandlers(bot) {
     if (!state) return next();
 
     try {
-      // Collect City
       if (state.step === "city") {
         state.tempData.city = ctx.message.text;
         state.step = "address";
-        return ctx.reply("📦 آدرس دقیق خود را بنویسید:");
+        return ctx.reply("📦 Please enter your exact address:");
       }
 
-      // Collect Address
       if (state.step === "address") {
         state.tempData.address = ctx.message.text;
         state.step = "phone";
-        return ctx.reply("📞 شماره تماس خود را وارد کنید:");
+        return ctx.reply("📞 Please enter your phone number:");
       }
 
-      // Collect Phone & Create Order
       if (state.step === "phone") {
         state.tempData.phone = ctx.message.text;
-        await ctx.reply("⏳ در حال ثبت نهایی سفارش...");
+        await ctx.reply("⏳ Processing your order...");
 
         const user = await getOrCreateUser(telegramId);
         const cart = await getCart(telegramId);
 
-        // Calculate total price correctly (price is inside the product object)
         const total = cart.reduce((sum, item) => {
           return sum + (item.product?.price || 0) * item.qty;
         }, 0);
 
-        // Create the order and its items in one transaction
         const order = await prisma.order.create({
           data: {
             userId: user.id,
@@ -102,23 +80,20 @@ export function registerCheckoutHandlers(bot) {
           },
         });
 
-        // Clear the cart after order is successfully recorded
         await clearCart(telegramId);
 
         await ctx.reply(
-          `✅ سفارش ثبت شد!\n\n📦 شماره سفارش: ${order.id}\n💰 مبلغ کل: ${total.toLocaleString()} تومان`,
+          `✅ Order registered!\n\n📦 Order ID: ${order.id}\n💰 Total Amount: ${total.toLocaleString()}`,
         );
 
-        // Update state to wait for payment proof
         userCheckoutState.set(telegramId, {
-          step: "awaiting_payment", // Changed to match the photo handler
+          step: "awaiting_payment",
           orderId: order.id,
         });
 
-        await ctx.reply("💳 لطفاً تصویر فیش پرداخت خود را ارسال کنید:");
+        await ctx.reply("💳 Please upload your payment receipt:");
 
-        // Notify Admins about new order
-        const adminMsg = `🆕 سفارش جدید #${order.id}\n👤 یوزر: ${telegramId}\n📞 تلفن: ${state.tempData.phone}\n💰 مبلغ: ${total.toLocaleString()}`;
+        const adminMsg = `🆕 New Order #${order.id}\n👤 User: ${telegramId}\n📞 Phone: ${state.tempData.phone}\n💰 Total: ${total.toLocaleString()}`;
         for (const adminId of ADMIN_IDS) {
           try {
             await ctx.telegram.sendMessage(adminId, adminMsg);
@@ -127,19 +102,15 @@ export function registerCheckoutHandlers(bot) {
       }
     } catch (err) {
       console.error("Checkout process error:", err);
-      await ctx.reply("❌ خطا هنگام ثبت سفارش.");
+      await ctx.reply("❌ Error registering the order.");
       userCheckoutState.delete(telegramId);
     }
   });
 
-  // ----------------------------
-  // Step 3: Receive Payment Photo
-  // ----------------------------
   bot.on("photo", async (ctx, next) => {
     const telegramId = ctx.from.id.toString();
     const state = userCheckoutState.get(telegramId);
 
-    // Ensure user is in the correct step
     if (!state || state.step !== "awaiting_payment") return next();
 
     try {
@@ -160,23 +131,24 @@ export function registerCheckoutHandlers(bot) {
       });
 
       await ctx.reply(
-        "✅ فیش پرداخت دریافت شد.\n" +
-          "⏳ منتظر تأیید ادمین هستیم. به‌محض تأیید بهت خبر می‌دم.",
+        "✅ Payment receipt received.\n" + "⏳ Waiting for admin confirmation.",
       );
 
-      // Send payment proof to admins for confirmation
       for (const adminId of ADMIN_IDS) {
         try {
           await ctx.telegram.sendPhoto(adminId, fileId, {
-            caption: `🧾 فیش پرداخت سفارش #${state.orderId}`,
+            caption: `🧾 Receipt for order #${state.orderId}`,
             reply_markup: {
               inline_keyboard: [
                 [
                   {
-                    text: "✅ تأیید",
+                    text: "✅ Confirm",
                     callback_data: `confirm_${state.orderId}`,
                   },
-                  { text: "❌ رد", callback_data: `reject_${state.orderId}` },
+                  {
+                    text: "❌ Reject",
+                    callback_data: `reject_${state.orderId}`,
+                  },
                 ],
               ],
             },
@@ -185,7 +157,7 @@ export function registerCheckoutHandlers(bot) {
       }
     } catch (err) {
       console.error("Payment photo upload error:", err);
-      await ctx.reply("❌ خطا در آپلود فیش پرداخت.");
+      await ctx.reply("❌ Error uploading receipt.");
     }
   });
 }
