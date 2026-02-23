@@ -17,6 +17,7 @@ export function registerCheckoutHandlers(bot) {
   // ----------------------------
   bot.command("checkout", async (ctx) => {
     const telegramId = ctx.from.id.toString();
+    userCheckoutState.delete(telegramId);
     const cart = await getCart(telegramId);
 
     if (!cart || !cart.length) {
@@ -44,6 +45,9 @@ export function registerCheckoutHandlers(bot) {
   // Step 2️⃣ : Collect info
   // ----------------------------
   bot.on("text", async (ctx, next) => {
+    if (ctx.message.text.startsWith("/")) {
+      return next();
+    }
     const telegramId = ctx.from.id.toString();
     const state = userCheckoutState.get(telegramId);
     if (!state) return next();
