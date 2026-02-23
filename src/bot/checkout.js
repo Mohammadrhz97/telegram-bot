@@ -34,9 +34,21 @@ export function registerCheckoutHandlers(bot) {
 
     console.log("STEP 5 - creating order");
 
+    let user = await prisma.user.findUnique({
+      where: { telegramId: telegramId },
+    });
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: { telegramId: telegramId },
+      });
+    }
+
     const order = await prisma.order.create({
       data: {
-        telegramId,
+        user: {
+          connect: { id: user.id },
+        },
         status: "awaiting_payment",
         totalPrice: cart.reduce((s, i) => s + i.price, 0),
       },
