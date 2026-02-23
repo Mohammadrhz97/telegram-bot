@@ -67,7 +67,7 @@ registerPhotoSearchHandlers(bot);
 
 // 7) AI Text Search (Lowest Priority)
 // چون این هندلر به همه متن‌ها واکنش نشان می‌دهد، باید آخرین لایه باشد
-// registerSearchHandlers(bot);
+registerSearchHandlers(bot);
 
 bot.launch();
 console.log("🚀 Bot is running...");
