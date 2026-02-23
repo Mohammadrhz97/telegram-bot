@@ -16,6 +16,7 @@ export function registerCheckoutHandlers(bot) {
   // Step 1️⃣ : Start checkout
   // ----------------------------
   bot.command("checkout", async (ctx) => {
+    console.log("CHECKOUT HIT:", ctx.from.id);
     const telegramId = ctx.from.id.toString();
     userCheckoutState.delete(telegramId);
     const cart = await getCart(telegramId);
