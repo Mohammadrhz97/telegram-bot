@@ -16,14 +16,24 @@ export function registerCheckoutHandlers(bot) {
   // Step 1️⃣ : Start checkout
   // ----------------------------
   bot.command("checkout", async (ctx) => {
-    console.log("CHECKOUT HIT:", ctx.from.id);
     const telegramId = ctx.from.id.toString();
+    console.log("STEP 1");
+
     userCheckoutState.delete(telegramId);
+
+    console.log("STEP 2 - before getCart");
+
     const cart = await getCart(telegramId);
 
+    console.log("STEP 3 - cart:", cart);
+
     if (!cart || !cart.length) {
+      console.log("STEP 4 - empty cart");
       return ctx.reply("🛒 سبد خریدت خالیه!");
     }
+
+    console.log("STEP 5 - creating order");
+
     const order = await prisma.order.create({
       data: {
         telegramId,
@@ -32,14 +42,9 @@ export function registerCheckoutHandlers(bot) {
       },
     });
 
-    userCheckoutState.set(telegramId, {
-      step: "awaiting_payment",
-      orderId: order.id,
-    });
-    await ctx.reply(
-      "🧾 برای شروع ثبت سفارش، لطفاً تصویر فیش پرداخت را ارسال کنید.\n\n" +
-        "⏳ بعد از تأیید ادمین، اطلاعات ارسال از شما گرفته می‌شود.",
-    );
+    console.log("STEP 6 - order created");
+
+    await ctx.reply("OK REACHED END");
   });
 
   // ----------------------------
